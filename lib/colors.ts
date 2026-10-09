@@ -1,3 +1,4 @@
+import color from "color"
 import type { Color } from "./types"
 const rgb = (r: number, g: number, b: number): Color => [
   r / 255,
@@ -33,31 +34,15 @@ export const DEFAULT_LAYER_COLORS: Record<string, Color> = {
 export const normalizeLayer = (layer: string) => layer.replace(/_copper$/, "")
 
 export function parseColor(value: string): Color {
-  const hex = value.match(/^#([0-9a-f]{3,8})$/i)?.[1]
-  if (hex) {
-    const full = hex.length <= 4 ? [...hex].map((c) => c + c).join("") : hex
-    if (full.length !== 6 && full.length !== 8)
-      throw new Error(`Unsupported color: ${value}`)
+  try {
+    const parsed = color(value.trim().toLowerCase()).rgb()
     return [
-      parseInt(full.slice(0, 2), 16) / 255,
-      parseInt(full.slice(2, 4), 16) / 255,
-      parseInt(full.slice(4, 6), 16) / 255,
-      full.length === 8 ? parseInt(full.slice(6), 16) / 255 : 1,
+      parsed.red() / 255,
+      parsed.green() / 255,
+      parsed.blue() / 255,
+      parsed.alpha(),
     ]
+  } catch {
+    throw new Error(`Unsupported color: ${value}`)
   }
-  const match = value.match(/^rgba?\(([^)]+)\)$/)
-  if (match) {
-    const channels = match[1].split(",").map((v) => Number(v.trim()))
-    if (
-      (channels.length === 3 || channels.length === 4) &&
-      channels.every(Number.isFinite)
-    )
-      return [
-        channels[0] / 255,
-        channels[1] / 255,
-        channels[2] / 255,
-        channels[3] ?? 1,
-      ]
-  }
-  throw new Error(`Unsupported color: ${value}`)
 }

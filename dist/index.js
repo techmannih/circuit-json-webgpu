@@ -70,8 +70,8 @@ function isValidWireTaperSegment(segment) {
 import earcut from "earcut";
 import polygonClipping from "polygon-clipping";
 var MeshBuilder = class {
-  constructor(color = [1, 1, 1, 1], element = 0, category = 0) {
-    this.color = color;
+  constructor(color2 = [1, 1, 1, 1], element = 0, category = 0) {
+    this.color = color2;
     this.element = element;
     this.category = category;
   }
@@ -245,15 +245,15 @@ function clip(points, offset, above) {
 }
 function drawKeepout(mesh, rings) {
   const copperColor = mesh.color;
-  const color = [
+  const color2 = [
     copperColor[0] + (1 - copperColor[0]) * 0.4,
     copperColor[1] + (1 - copperColor[1]) * 0.4,
     copperColor[2] + (1 - copperColor[2]) * 0.4,
     copperColor[3]
   ];
-  mesh.color = [color[0], color[1], color[2], color[3] * 0.2];
+  mesh.color = [color2[0], color2[1], color2[2], color2[3] * 0.2];
   mesh.polygon(rings);
-  mesh.color = color;
+  mesh.color = color2;
   const surface = new MeshBuilder();
   surface.polygon(rings);
   const halfWidth = 0.15 * Math.SQRT2 / 2;
@@ -279,6 +279,7 @@ function drawKeepout(mesh, rings) {
 }
 
 // lib/colors.ts
+import color from "color";
 var rgb = (r, g, b) => [
   r / 255,
   g / 255,
@@ -312,30 +313,17 @@ var DEFAULT_LAYER_COLORS = {
 };
 var normalizeLayer = (layer) => layer.replace(/_copper$/, "");
 function parseColor(value) {
-  const hex = value.match(/^#([0-9a-f]{3,8})$/i)?.[1];
-  if (hex) {
-    const full = hex.length <= 4 ? [...hex].map((c) => c + c).join("") : hex;
-    if (full.length !== 6 && full.length !== 8)
-      throw new Error(`Unsupported color: ${value}`);
+  try {
+    const parsed = color(value.trim().toLowerCase()).rgb();
     return [
-      parseInt(full.slice(0, 2), 16) / 255,
-      parseInt(full.slice(2, 4), 16) / 255,
-      parseInt(full.slice(4, 6), 16) / 255,
-      full.length === 8 ? parseInt(full.slice(6), 16) / 255 : 1
+      parsed.red() / 255,
+      parsed.green() / 255,
+      parsed.blue() / 255,
+      parsed.alpha()
     ];
+  } catch {
+    throw new Error(`Unsupported color: ${value}`);
   }
-  const match = value.match(/^rgba?\(([^)]+)\)$/);
-  if (match) {
-    const channels = match[1].split(",").map((v) => Number(v.trim()));
-    if ((channels.length === 3 || channels.length === 4) && channels.every(Number.isFinite))
-      return [
-        channels[0] / 255,
-        channels[1] / 255,
-        channels[2] / 255,
-        channels[3] ?? 1
-      ];
-  }
-  throw new Error(`Unsupported color: ${value}`);
 }
 
 // lib/text/fill-even-odd.ts
@@ -584,11 +572,29 @@ function getLineStartX(params) {
 }
 
 // lib/text/draw-text.ts
+import { textMetrics as textMetrics2 } from "@tscircuit/alphabet";
+var alphabetAscenderRatio = 940 / 1e3;
 function drawText(mesh, e, yAxis = "up") {
-  const text = String(e.text ?? "");
+  const text = String(e.text ?? "").replace(/\\n/g, "\n");
   if (!text) return;
   const c = e.anchor_position ?? e.center ?? { x: e.x ?? 0, y: e.y ?? 0 };
   const fontSize = e.font_size ?? 1;
+  if (e.type === "pcb_note_text" && text.includes("\n")) {
+    for (const [index, line] of text.split("\n").entries())
+      drawText(
+        mesh,
+        {
+          ...e,
+          text: line,
+          anchor_position: {
+            x: c.x,
+            y: c.y + (yAxis === "up" ? -1 : 1) * index * fontSize
+          }
+        },
+        yAxis
+      );
+    return;
+  }
   const layout = getAlphabetLayout(text, fontSize);
   const geometry = getTextGeometry(
     e.anchor_alignment ?? "center",
@@ -597,14 +603,23 @@ function drawText(mesh, e, yAxis = "up") {
   );
   const isNote = e.type === "pcb_note_text";
   const isFabrication = e.type === "pcb_fabrication_note_text";
-  const mirrored = isFabrication ? false : isNote ? e.is_mirrored_from_top_view ?? e.layer === "bottom" : e.type === "pcb_silkscreen_text" ? e.layer === "bottom" : e.is_mirrored ?? e.layer === "bottom";
+  const mirrored = isFabrication ? false : isNote ? e.is_mirrored_from_top_view ?? false : e.type === "pcb_silkscreen_text" ? e.layer === "bottom" : e.is_mirrored ?? e.layer === "bottom";
   const rotation = isNote || isFabrication ? 0 : e.ccw_rotation ?? 0;
   const sign = yAxis === "up" ? -1 : 1;
-  const transform2 = (p) => rotate(
-    { x: c.x + (mirrored ? -p.x : p.x), y: c.y + sign * p.y },
-    c,
-    -sign * rotation
-  );
+  const alignment = e.anchor_alignment ?? "center";
+  const ascender = alphabetAscenderRatio;
+  const descender = ascender - textMetrics2.lineHeightRatio;
+  const noteAnchorX = alignment.endsWith("_left") ? 0 : alignment.endsWith("_right") ? -layout.width : -layout.width / 2;
+  const noteBaseline = alignment.startsWith("top_") ? ascender : alignment.startsWith("bottom_") ? descender : (ascender + descender) / 2;
+  const transform2 = (p) => {
+    const x = isNote ? p.x - geometry.startOffset.x - layout.strokeWidth / 2 + noteAnchorX : p.x;
+    const y = isNote ? (p.y - geometry.startOffset.y - fontSize) * ascender + noteBaseline * fontSize : p.y;
+    return rotate(
+      { x: c.x + (mirrored ? -x : x), y: c.y + sign * y },
+      c,
+      -sign * rotation
+    );
+  };
   if (e.is_knockout && !isNote && !isFabrication) {
     const b = geometry.bounds;
     if (!b) return;
@@ -1090,8 +1105,8 @@ function compileCircuitJson(elements, options = {}) {
         }
       } else if (type === "pcb_copper_pour") {
         get(e.layer, index, false, 1).polygon(shape(e));
-      } else if (type === "pcb_copper_text") {
-        drawText(get(e.layer, index), e, options.textYAxis);
+      } else if (input.type === "pcb_copper_text") {
+        drawText(get(input.layer, index), input, options.textYAxis);
       } else if (/^pcb_(silkscreen|fabrication_note|courtyard|note|user_note)_/.test(
         type
       )) {
@@ -1113,10 +1128,10 @@ function compileCircuitJson(elements, options = {}) {
             pcbDimension: input,
             textYAxis: options.textYAxis
           });
-        } else if (type.endsWith("_text")) {
+        } else if (input.type === "pcb_silkscreen_text" || input.type === "pcb_fabrication_note_text" || input.type === "pcb_note_text") {
           if (e.color && (group === "note" || group === "fabrication_note"))
             mesh.color = parseColor(e.color);
-          drawText(mesh, e, options.textYAxis);
+          drawText(mesh, input, options.textYAxis);
         } else if (input.type === "pcb_note_line" || input.type === "pcb_silkscreen_line") {
           if (input.type === "pcb_note_line" && input.color)
             mesh.color = parseColor(input.color);

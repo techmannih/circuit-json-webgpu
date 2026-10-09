@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test"
+import type { NinePointAnchor, PcbCopperText } from "circuit-json"
 import { MeshBuilder } from "../lib/geometry"
 import { drawText } from "../lib/text/draw-text"
 import { fillEvenOdd } from "../lib/text/fill-even-odd"
-function mesh(text: string, extra: Record<string, unknown> = {}) {
+function mesh(text: string, extra: Partial<PcbCopperText> = {}) {
   const m = new MeshBuilder()
   drawText(m, {
     type: "pcb_copper_text",
@@ -48,9 +49,12 @@ test("uses proportional glyph advances and preserves lowercase", () => {
   )
 })
 test("anchors actual ink bounds at all nine positions", () => {
-  for (const v of ["top", "center", "bottom"])
-    for (const h of ["left", "center", "right"]) {
-      const anchor = v === "center" && h === "center" ? "center" : `${v}_${h}`
+  for (const v of ["top", "center", "bottom"] as const)
+    for (const h of ["left", "center", "right"] as const) {
+      const anchor: NinePointAnchor =
+        v === "center" && h === "center"
+          ? "center"
+          : (`${v}_${h}` as NinePointAnchor)
       const b = bounds(mesh("ag!\nWi", { anchor_alignment: anchor }))
       expect(
         h === "left" ? b.minX : h === "right" ? b.maxX : (b.minX + b.maxX) / 2,

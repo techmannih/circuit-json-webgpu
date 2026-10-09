@@ -1,4 +1,7 @@
 import { appendFileSync, readFileSync } from "node:fs"
+import { dirname, resolve } from "node:path"
+import { PNG } from "pngjs"
+import { compare } from "./compare"
 import type { Diagnostic } from "../../lib/types"
 import type { ComparisonResult, ReferenceTest } from "./types"
 
@@ -51,6 +54,68 @@ const indexCases = (results: ComparisonResult[]) => {
       return [JSON.stringify([test, ordinal]), result]
     }),
   )
+}
+
+/** Measure both renderer revisions against the same SVG reference image. */
+export function compareBaseWithCurrentReference(
+  base: ParityReport,
+  head: ParityReport,
+  baseDirectory: string,
+  headDirectory: string,
+): ParityReport {
+  const current = indexCases(head.results)
+  const results = [...indexCases(base.results)].map(([key, result]) => {
+    const reference = current.get(key)
+    if (
+      !reference ||
+      !["pass", "mismatch"].includes(result.status) ||
+      !["pass", "mismatch"].includes(reference.status)
+    )
+      return result
+    const expected = PNG.sync.read(
+      readFileSync(resolve(headDirectory, `${reference.id}.svg.png`)),
+    )
+    const baseImage = readFileSync(
+      resolve(baseDirectory, `${result.id}.webgpu.png`),
+    )
+    const actual = PNG.sync.read(baseImage)
+    if (expected.width !== actual.width || expected.height !== actual.height)
+      throw Error(`Base and current reference dimensions differ: ${key}`)
+    if (
+      !Number.isFinite(reference.allowance) ||
+      !Number.isFinite(reference.changedPixels)
+    )
+      throw Error(`Missing comparison metrics: ${key}`)
+    // Identical renderer images already have the head's current-reference score.
+    const sameRendering = baseImage.equals(
+      readFileSync(resolve(headDirectory, `${reference.id}.webgpu.png`)),
+    )
+    const { changed, rawChanged } = sameRendering
+      ? {
+          changed: reference.changedPixels!,
+          rawChanged: reference.rawChangedPixels ?? reference.changedPixels!,
+        }
+      : compare(
+          expected,
+          actual,
+          new PNG({ width: actual.width, height: actual.height }),
+        )
+    const pass = changed <= reference.allowance! && !result.diagnostics?.length
+    return {
+      ...result,
+      pass,
+      status: pass ? "pass" : "mismatch",
+      changedPixels: changed,
+      rawChangedPixels: rawChanged,
+      inkPixels: reference.inkPixels,
+      allowance: reference.allowance,
+    }
+  })
+  return {
+    ...base,
+    results,
+    parityFailed: results.filter((r) => r.pass === false).length,
+  }
 }
 
 /** The strict SVG audit remains available; CI rejects regressions from its base. */
@@ -145,8 +210,14 @@ if (import.meta.main) {
     )
   const base = JSON.parse(readFileSync(basePath, "utf8")) as ParityReport
   const head = JSON.parse(readFileSync(headPath, "utf8")) as ParityReport
-  const failures = findParityRegressions(base, head)
-  const summary = `SVG parity regression check: ${failures.length} regressions across ${head.renderCalls} comparisons.\nStrict audit still reports ${head.parityFailed} SVG mismatches and ${head.referenceFailed} reference failures (base: ${base.parityFailed} and ${base.referenceFailed}).\n`
+  const comparableBase = compareBaseWithCurrentReference(
+    base,
+    head,
+    dirname(basePath),
+    dirname(headPath),
+  )
+  const failures = findParityRegressions(comparableBase, head)
+  const summary = `SVG parity regression check: ${failures.length} regressions across ${head.renderCalls} comparisons.\nBoth WebGPU revisions use the proposed SVG reference: base ${comparableBase.parityFailed} mismatches, head ${head.parityFailed}.\nStrict audits originally reported ${base.parityFailed} base SVG mismatches and ${head.parityFailed} head SVG mismatches; reference test failures: base ${base.referenceFailed}, head ${head.referenceFailed}.\n`
   console.log(summary)
   if (process.env.GITHUB_STEP_SUMMARY)
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary)

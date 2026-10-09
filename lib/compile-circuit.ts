@@ -246,8 +246,8 @@ export function compileCircuitJson(
         }
       } else if (type === "pcb_copper_pour") {
         get(e.layer, index, false, 1).polygon(shape(e))
-      } else if (type === "pcb_copper_text") {
-        drawText(get(e.layer, index), e, options.textYAxis)
+      } else if (input.type === "pcb_copper_text") {
+        drawText(get(input.layer, index), input, options.textYAxis)
       } else if (
         /^pcb_(silkscreen|fabrication_note|courtyard|note|user_note)_/.test(
           type,
@@ -274,10 +274,14 @@ export function compileCircuitJson(
             pcbDimension: input,
             textYAxis: options.textYAxis,
           })
-        } else if (type.endsWith("_text")) {
+        } else if (
+          input.type === "pcb_silkscreen_text" ||
+          input.type === "pcb_fabrication_note_text" ||
+          input.type === "pcb_note_text"
+        ) {
           if (e.color && (group === "note" || group === "fabrication_note"))
             mesh.color = parseColor(e.color)
-          drawText(mesh, e, options.textYAxis)
+          drawText(mesh, input, options.textYAxis)
         } else if (
           input.type === "pcb_note_line" ||
           input.type === "pcb_silkscreen_line"

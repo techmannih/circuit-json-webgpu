@@ -28,3 +28,11 @@ const schemaLink = resolve(target, "node_modules/circuit-json")
 mkdirSync(dirname(schemaLink), { recursive: true })
 rmSync(schemaLink, { recursive: true, force: true })
 symlinkSync(referenceSchema, schemaLink, "dir")
+
+// Frozen Canvas goldens use their original SVG renderer.
+const referenceSvg = dirname(
+  require.resolve("circuit-to-svg-reference/package.json"),
+)
+const svgLink = resolve(target, "node_modules/circuit-to-svg")
+rmSync(svgLink, { recursive: true, force: true })
+symlinkSync(referenceSvg, svgLink, "dir")

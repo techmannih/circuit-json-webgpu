@@ -63,7 +63,12 @@ for (const entry of readdirSync(upstream, {
   if (!entry.isFile()) continue
   const full = resolve(entry.parentPath, entry.name),
     path = relative(upstream, full)
-  if (path === "manifest.json" || manifest.files[path]) continue
+  if (
+    path.startsWith("node_modules/") ||
+    path === "manifest.json" ||
+    manifest.files[path]
+  )
+    continue
   const dest = resolve(actual, "upstream-generated", path)
   mkdirSync(resolve(dest, ".."), { recursive: true })
   writeFileSync(dest, readFileSync(full))

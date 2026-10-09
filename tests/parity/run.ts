@@ -11,6 +11,15 @@ import { prepareComparison } from "./prepare.ts"
 import { comparisonSilkscreenColors } from "./palette"
 import { convertCircuitJsonToPcbSvg } from "circuit-to-svg"
 import { Resvg } from "@resvg/resvg-js"
+const alphabetFontPath = fileURLToPath(
+  new URL(
+    "TscircuitAlphabet.ttf",
+    import.meta.resolve(
+      "@tscircuit/alphabet",
+      import.meta.resolve("circuit-to-svg"),
+    ),
+  ),
+)
 const root = fileURLToPath(new URL("../../", import.meta.url))
 const dir = new URL("../actual/parity/", import.meta.url)
 const cases: CapturedCase[] = JSON.parse(
@@ -100,7 +109,11 @@ try {
         },
       )
       await writeFile(new URL(`${c.id}.svg.svg`, dir), svg)
-      const svgPng = new Resvg(svg).render().asPng()
+      const svgPng = new Resvg(svg, {
+        font: { fontFiles: [alphabetFontPath], loadSystemFonts: false },
+      })
+        .render()
+        .asPng()
       await writeFile(new URL(`${c.id}.svg.png`, dir), svgPng)
       const result = await page.evaluate(
         (scene) => window.parity.render(scene),
