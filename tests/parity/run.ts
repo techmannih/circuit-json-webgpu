@@ -8,8 +8,7 @@ import { chromium } from "playwright"
 import { PNG } from "pngjs"
 import { compare } from "./compare.ts"
 import { prepareComparison } from "./prepare.ts"
-import { comparisonSilkscreenColors } from "./palette"
-import { convertCircuitJsonToPcbSvg } from "circuit-to-svg"
+import { renderComparisonSvg } from "./render-svg"
 import { Resvg } from "@resvg/resvg-js"
 const root = fileURLToPath(new URL("../../", import.meta.url))
 const dir = new URL("../actual/parity/", import.meta.url)
@@ -79,26 +78,7 @@ try {
       continue
     }
     try {
-      const svg = convertCircuitJsonToPcbSvg(
-        scene.elements as unknown as Parameters<
-          typeof convertCircuitJsonToPcbSvg
-        >[0],
-        {
-          width: scene.width,
-          height: scene.height,
-          viewport: scene.viewport,
-          layer: scene.layer,
-          showSolderMask: scene.showSolderMask,
-          showPcbNotes: scene.showPcbNotes,
-          showCourtyards: true,
-          shouldDrawErrors: false,
-          shouldDrawRatsNest: false,
-          includeVersion: false,
-          drawPaddingOutsideBoard: false,
-          backgroundColor: scene.background,
-          colorOverrides: { silkscreen: comparisonSilkscreenColors },
-        },
-      )
+      const svg = renderComparisonSvg(scene)
       await writeFile(new URL(`${c.id}.svg.svg`, dir), svg)
       const svgPng = new Resvg(svg).render().asPng()
       await writeFile(new URL(`${c.id}.svg.png`, dir), svgPng)

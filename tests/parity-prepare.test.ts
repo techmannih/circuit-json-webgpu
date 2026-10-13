@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { test, expect } from "bun:test"
 import { prepareComparison } from "./parity/prepare.ts"
+import { renderComparisonSvg } from "./parity/render-svg"
 const fixture = {
   width: 400,
   height: 200,
@@ -55,4 +56,106 @@ test("Canvas-only passes are not mislabeled as SVG comparisons", () => {
     { options: { layers: ["bottom_copper", "top_user_note"] } },
   ])
     expect(prepareComparison({ ...fixture, ...extra }).reason).toBeTruthy()
+})
+
+test("soldermask comparisons render the board mask in SVG and allow it through the GPU layer filter", () => {
+  for (const type of ["pcb_board", "pcb_panel"]) {
+    for (const side of ["top", "bottom"] as const) {
+      for (const filtered of [false, true]) {
+        const { scene } = prepareComparison({
+          ...fixture,
+          elements: [
+            {
+              type,
+              [`${type}_id`]: "surface",
+              center: { x: 50, y: 25 },
+              width: 80,
+              height: 40,
+            },
+            ...(type === "pcb_panel"
+              ? [
+                  {
+                    type: "pcb_board",
+                    pcb_board_id: "child",
+                    center: { x: 50, y: 25 },
+                    width: 60,
+                    height: 30,
+                  },
+                ]
+              : []),
+          ],
+          options: {
+            layers: filtered ? [`${side}_copper`] : undefined,
+            drawSoldermask: true,
+            drawSoldermaskTop: side === "top",
+            drawSoldermaskBottom: side === "bottom",
+          },
+        })
+        assert(scene)
+        expect(scene.layer).toBe(side)
+        expect(scene.showSolderMask).toBe(true)
+        if (filtered) {
+          expect(scene.layers).toContain(`soldermask_${side}`)
+          expect(scene.layers).toContain("substrate")
+        }
+        // Exercise the same SVG entry point as the audit, not just its options.
+        const svg = renderComparisonSvg(scene)
+        expect(svg).toContain('class="pcb-board-soldermask"')
+        expect(svg).toContain(`data-pcb-layer="soldermask-${side}"`)
+        expect(scene.viewport).toEqual({
+          minX: 0,
+          maxX: 100,
+          minY: 0,
+          maxY: 50,
+        })
+      }
+    }
+  }
+})
+
+test("soldermask defaults to top and explicit side flags do not enable the wrong surface", () => {
+  for (const [options, visible] of [
+    [{ drawSoldermask: true }, true],
+    [{ drawSoldermask: false, drawSoldermaskTop: true }, false],
+    [
+      {
+        drawSoldermask: true,
+        drawSoldermaskTop: false,
+        drawSoldermaskBottom: false,
+      },
+      false,
+    ],
+    [
+      {
+        layers: ["top_copper"],
+        drawSoldermask: true,
+        drawSoldermaskBottom: true,
+      },
+      false,
+    ],
+    [{ layers: ["inner1_copper"], drawSoldermask: true }, false],
+  ] as const) {
+    const { scene } = prepareComparison({
+      ...fixture,
+      elements: [
+        {
+          type: "pcb_board",
+          pcb_board_id: "board",
+          center: { x: 50, y: 25 },
+          width: 80,
+          height: 40,
+        },
+      ],
+      options: {
+        ...options,
+        layers: "layers" in options ? [...options.layers] : undefined,
+      },
+    })
+    assert(scene)
+    expect(scene.showSolderMask).toBe(visible)
+    expect(
+      renderComparisonSvg(scene).includes('class="pcb-board-soldermask"'),
+    ).toBe(visible)
+    if (visible) expect(scene.layer).toBe("top")
+  }
 })

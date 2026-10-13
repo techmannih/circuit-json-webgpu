@@ -43,7 +43,20 @@ export function prepareComparison(
       reason:
         "This mixed-side layer selection cannot be expressed by circuit-to-svg's single layer option.",
     }
-  const layer = sides[0] as LayerRef | undefined
+  const hasExplicitMaskSide =
+    c.options.drawSoldermaskTop !== undefined ||
+    c.options.drawSoldermaskBottom !== undefined
+  const topMask =
+    !!c.options.drawSoldermask &&
+    (c.options.drawSoldermaskTop ?? !hasExplicitMaskSide)
+  const bottomMask =
+    !!c.options.drawSoldermask && (c.options.drawSoldermaskBottom ?? false)
+  const layer = (sides[0] ??
+    (topMask ? "top" : bottomMask ? "bottom" : undefined)) as
+    | LayerRef
+    | undefined
+  const showSolderMask =
+    layer === "top" ? topMask : layer === "bottom" ? bottomMask : false
   const elements = requested?.length
     ? c.elements.filter((e) => {
         const layers =
@@ -95,7 +108,12 @@ export function prepareComparison(
       .replace(/_user_note$/, "_notes")
       .replace(/_fabrication_note$/, "_fabrication"),
   )
-  if (layers) layers.push("board", "edge_cuts", "drill")
+  if (layers) {
+    layers.push("board", "edge_cuts", "drill")
+    // Canvas's mask pass is separate from its copper layer filter. Keep the
+    // selected mask and exposed substrate visible in the WebGPU comparison too.
+    if (showSolderMask) layers.push(`soldermask_${layer}`, "substrate")
+  }
   return {
     scene: {
       elements,
@@ -105,7 +123,7 @@ export function prepareComparison(
       transform,
       layer,
       layers,
-      showSolderMask: c.options.drawSoldermask ?? false,
+      showSolderMask,
       showPcbNotes: c.options.showPcbNotes ?? true,
       background: "#000000",
     },

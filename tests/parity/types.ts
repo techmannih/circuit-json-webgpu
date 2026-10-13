@@ -14,6 +14,8 @@ export type CapturedCase = {
     clearDrillHoles?: boolean
     drawSolderPaste?: boolean
     drawSoldermask?: boolean
+    drawSoldermaskTop?: boolean
+    drawSoldermaskBottom?: boolean
     showPcbNotes?: boolean
   }
   primitive?: unknown

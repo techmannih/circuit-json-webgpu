@@ -5,6 +5,10 @@ import { createServer } from "vite"
 import { chromium } from "playwright"
 import { PNG } from "pngjs"
 import pixelmatch from "pixelmatch"
+import { Resvg } from "@resvg/resvg-js"
+import { prepareComparison } from "./parity/prepare"
+import { renderComparisonSvg } from "./parity/render-svg"
+import type { CapturedCase } from "./parity/types"
 
 const root = fileURLToPath(new URL("../", import.meta.url))
 const server = await createServer({
@@ -177,9 +181,73 @@ try {
     "tented via mask retains element highlight IDs",
   )
   assert.equal(highlight.uploads, 1)
+
+  // Use the audit's real SVG and browser entry points: a valid golden can
+  // otherwise preserve a missing mask on one side of the comparison forever.
+  await page.goto(`${server.resolvedUrls!.local[0]}tests/parity/`)
+  await page.waitForFunction(() => window.parity)
+  const comparisonOptions: CapturedCase["options"][] = [
+    { drawSoldermask: true },
+    { drawSoldermask: true, layers: ["top_copper"] },
+    { drawSoldermask: true, drawSoldermaskBottom: true },
+    {
+      drawSoldermask: true,
+      drawSoldermaskBottom: true,
+      layers: ["bottom_copper"],
+    },
+    { drawSoldermask: false },
+  ]
+  for (const options of comparisonOptions) {
+    const { scene } = prepareComparison({
+      width: 100,
+      height: 100,
+      matrix: { a: 10, b: 0, c: 0, d: -10, e: 50, f: 50 },
+      contextTransform: { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 },
+      elements: [
+        {
+          type: "pcb_board",
+          pcb_board_id: "board",
+          center: { x: 0, y: 0 },
+          width: 8,
+          height: 8,
+        },
+      ],
+      options,
+    })
+    assert(scene)
+    const svg = PNG.sync.read(
+      new Resvg(renderComparisonSvg(scene)).render().asPng(),
+    )
+    const rendered = await page.evaluate(
+      (scene) => window.parity.render(scene),
+      scene,
+    )
+    assert.deepEqual(rendered.diagnostics, [])
+    const gpu = PNG.sync.read(Buffer.from(rendered.png, "base64"))
+    for (const [name, png] of [
+      ["SVG", svg],
+      ["WebGPU", gpu],
+    ] as const) {
+      const offset = (50 * png.width + 50) * 4
+      const [r, g, b, a] = png.data.slice(offset, offset + 4)
+      if (options.drawSoldermask) {
+        assert(
+          g > r && g > b && g > 20,
+          `${name}: board must have visible green mask for ${JSON.stringify(options)}`,
+        )
+        assert.equal(a, 255)
+      } else
+        assert.deepEqual(
+          [r, g, b, a],
+          [0, 0, 0, 255],
+          `${name}: mask must remain hidden when disabled`,
+        )
+    }
+  }
+  await page.evaluate(() => window.parity.dispose())
   assert.deepEqual(errors, [])
   console.log(
-    "Soldermask WebGPU pixel assertions, retained geometry, and 3 snapshots passed",
+    "Soldermask WebGPU pixel assertions, retained geometry, 3 snapshots, and 5 SVG/WebGPU mask visibility comparisons passed",
   )
 } finally {
   await browser?.close()
