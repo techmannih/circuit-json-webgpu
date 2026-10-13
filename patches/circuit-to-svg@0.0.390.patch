@@ -1,0 +1,50 @@
+diff --git a/dist/index.js b/dist/index.js
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -2125,9 +2125,8 @@
+   const padDataAttributes = getPadDataAttributes(hole, ctx.circuitJson);
+   const layer = Array.isArray(hole.layers) && hole.layers[0] || hole.layer || "top";
+   const maskLayer = layer;
+-  const isCoveredWithSolderMask = Boolean(hole.is_covered_with_solder_mask);
+   const soldermaskMargin = (hole.soldermask_margin ?? 0) * Math.abs(transform.a);
+-  const shouldShowSolderMask = showSolderMask && isCoveredWithSolderMask && soldermaskMargin !== 0;
++  const shouldShowSolderMask = showSolderMask && soldermaskMargin !== 0;
+   const solderMaskColor = colorMap2.soldermaskWithCopperUnderneath.top;
+   if (hole.shape === "pill") {
+     const scaledOuterWidth = hole.outer_width * Math.abs(transform.a);
+@@ -3635,7 +3634,7 @@
+   },
+   soldermaskWithCopperUnderneath: {
+     top: "rgb(18, 82, 50)",
+-    bottom: "rgb(77, 127, 196)"
++    bottom: "rgb(18, 82, 50)"
+   },
+   soldermask: {
+     top: "rgb(12, 55, 33)",
+@@ -4533,7 +4532,14 @@
+   if (layerFilter && pad.layer !== layerFilter) return [];
+   const padDataAttributes = getPadDataAttributes(pad, ctx.circuitJson);
+   const isCoveredWithSolderMask = Boolean(pad?.is_covered_with_solder_mask);
+-  const shouldShowSolderMask = showSolderMask && isCoveredWithSolderMask;
++  const margin = pad.soldermask_margin ?? 0;
++  const hasSoldermaskMargin = pad.shape === "rect" || pad.shape === "rotated_rect" ? [
++    pad.soldermask_margin_left ?? margin,
++    pad.soldermask_margin_right ?? margin,
++    pad.soldermask_margin_top ?? margin,
++    pad.soldermask_margin_bottom ?? margin
++  ].some((value) => value !== 0) : margin !== 0;
++  const shouldShowSolderMask = showSolderMask && (isCoveredWithSolderMask || hasSoldermaskMargin);
+   const soldermaskWithCopperUnderneathColor = colorMap2.soldermaskWithCopperUnderneath[pad.layer] ?? colorMap2.soldermaskWithCopperUnderneath.top;
+   const soldermaskMargin = (pad.soldermask_margin ?? 0) * Math.abs(transform.a);
+   if (pad.shape === "rect" || pad.shape === "rotated_rect") {
+@@ -5625,9 +5631,8 @@
+   const { transform, colorMap: colorMap2, showSolderMask } = ctx;
+   const layer = ctx.layer ?? "top";
+   const [x, y] = applyToPoint35(transform, [hole.x, hole.y]);
+-  const isCoveredWithSolderMask = Boolean(hole.is_covered_with_solder_mask);
+   const soldermaskMargin = (hole.soldermask_margin ?? 0) * Math.abs(transform.a);
+-  const shouldShowSolderMask = showSolderMask && isCoveredWithSolderMask && soldermaskMargin !== 0;
++  const shouldShowSolderMask = showSolderMask && soldermaskMargin !== 0;
+   const solderMaskColor = colorMap2.soldermask.top;
+   if (hole.hole_shape === "circle" || hole.hole_shape === "square") {
+     const scaledDiameter = hole.hole_diameter * Math.abs(transform.a);

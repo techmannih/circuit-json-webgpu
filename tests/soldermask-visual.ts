@@ -9,6 +9,7 @@ import { Resvg } from "@resvg/resvg-js"
 import { prepareComparison } from "./parity/prepare"
 import { renderComparisonSvg } from "./parity/render-svg"
 import type { CapturedCase } from "./parity/types"
+import { marginComparison } from "./soldermask/margin-comparison"
 
 const root = fileURLToPath(new URL("../", import.meta.url))
 const server = await createServer({
@@ -244,10 +245,73 @@ try {
         )
     }
   }
+  for (const state of states) {
+    for (const coverage of [undefined, false] as const) {
+      const scene = marginComparison(state, coverage)
+      const svg = PNG.sync.read(
+        new Resvg(renderComparisonSvg(scene)).render().asPng(),
+      )
+      const rendered = await page.evaluate(
+        (scene) => window.parity.render(scene),
+        scene,
+      )
+      assert.deepEqual(rendered.diagnostics, [])
+      const gpu = PNG.sync.read(Buffer.from(rendered.png, "base64"))
+      for (const [name, png] of [
+        ["SVG", svg],
+        ["WebGPU", gpu],
+      ] as const) {
+        const sample = (x: number, y: number) => {
+          const offset =
+            (Math.round(160 - 25 * y) * png.width + Math.round(300 + 25 * x)) *
+            4
+          return [...png.data.slice(offset, offset + 4)]
+        }
+        for (const x of [-8, -4, 0, 4, 8]) {
+          const context = `${name} ${state} coverage=${coverage} x=${x}`
+          const positive = sample(x + 1.2, 2.3)
+          const negative = sample(x + 0.85, -2.3)
+          if (state === "off") {
+            assert.deepEqual(
+              positive,
+              [0, 0, 0, 255],
+              `${context}: disabled margin`,
+            )
+            assert(
+              negative[1] <= negative[0] || negative[1] <= negative[2],
+              `${context}: disabled mask must not cover geometry`,
+            )
+          } else {
+            assert.deepEqual(
+              positive,
+              [201, 162, 110, 255],
+              `${context}: positive margin must expose substrate`,
+            )
+            assert(
+              negative[1] > negative[0] && negative[1] > negative[2],
+              `${context}: negative margin must leave a visible green ring`,
+            )
+            const center = sample(x, -2.3)
+            assert(
+              center[1] <= center[0] || center[1] <= center[2],
+              `${context}: negative opening must remain exposed`,
+            )
+          }
+        }
+        await writeFile(
+          new URL(
+            `./actual/soldermask/margins-${state}-${coverage === false ? "false" : "unset"}-${name}.png`,
+            import.meta.url,
+          ),
+          PNG.sync.write(png),
+        )
+      }
+    }
+  }
   await page.evaluate(() => window.parity.dispose())
   assert.deepEqual(errors, [])
   console.log(
-    "Soldermask WebGPU pixel assertions, retained geometry, 3 snapshots, and 5 SVG/WebGPU mask visibility comparisons passed",
+    "Soldermask WebGPU pixel assertions, retained geometry, 3 snapshots, 5 SVG/WebGPU mask visibility comparisons, and 6 margin comparisons passed",
   )
 } finally {
   await browser?.close()
