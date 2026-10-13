@@ -9,7 +9,7 @@ import {
 } from "node:fs"
 import { createHash } from "node:crypto"
 import { fileURLToPath } from "node:url"
-import { resolve, relative } from "node:path"
+import { resolve, relative, sep } from "node:path"
 import "./prepare-upstream.ts"
 const root = fileURLToPath(new URL("../../", import.meta.url))
 const upstream = resolve(root, "tests/upstream/circuit-to-canvas")
@@ -63,6 +63,9 @@ for (const entry of readdirSync(upstream, {
   if (!entry.isFile()) continue
   const full = resolve(entry.parentPath, entry.name),
     path = relative(upstream, full)
+  // Bun's recursive listing can follow the reference-schema symlink. Its
+  // installed files are dependencies, not generated snapshot artifacts.
+  if (path.split(sep).includes("node_modules")) continue
   if (path === "manifest.json" || manifest.files[path]) continue
   const dest = resolve(actual, "upstream-generated", path)
   mkdirSync(resolve(dest, ".."), { recursive: true })
