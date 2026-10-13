@@ -490,7 +490,7 @@ try {
   await snapshot("soldermask-opening")
   // Only the opening exposes copper; the surrounding soldermask stays intact.
   assert.deepEqual(pixel(soldermask.png, 400, 300), layerColors.top)
-  assert.deepEqual(pixel(soldermask.png, 580, 300), [12, 55, 33, 255])
+  assert.deepEqual(pixel(soldermask.png, 580, 300), [52, 135, 73, 255])
   const throughPad = await page.evaluate(async () => {
     const drawer = window.gpuTest.drawer
     drawer.drawElements(

@@ -19,12 +19,12 @@
   "scripts": {
     "build": "tsup lib/index.ts --format esm --dts --clean",
     "typecheck": "bun tests/parity/prepare-upstream.ts && tsc --noEmit && tsc --noEmit -p tsconfig.reference.json",
-    "test": "bun test tests/dispose.test.ts tests/geometry.test.ts tests/text.test.ts tests/upstream-integrity.test.ts tests/parity-comparison.test.ts tests/parity-prepare.test.ts tests/parity-regressions.test.ts tests/parity-removed-diagnostics.test.ts tests/teardrop-geometry.test.ts tests/ti-drv8307evm-fabrication-dimensions.test.ts",
-    "test:visual": "bun tests/visual.ts",
+    "test": "bun test tests/dispose.test.ts tests/geometry.test.ts tests/text.test.ts tests/upstream-integrity.test.ts tests/parity-comparison.test.ts tests/parity-prepare.test.ts tests/parity-regressions.test.ts tests/parity-removed-diagnostics.test.ts tests/teardrop-geometry.test.ts tests/ti-drv8307evm-fabrication-dimensions.test.ts tests/soldermask.test.ts",
+    "test:visual": "bun tests/visual.ts && bun tests/soldermask-visual.ts",
     "snapshots:update": "UPDATE_SNAPSHOTS=1 bun tests/visual.ts",
     "dev": "vite --host 127.0.0.1",
-    "format": "biome format lib site scripts tsup.config.ts tests/teardrop-geometry.test.ts tests/teardrop-visual.ts tests/dispose.test.ts tests/geometry.test.ts tests/text.test.ts tests/parity-comparison.test.ts tests/parity-prepare.test.ts tests/parity-regressions.test.ts tests/parity-removed-diagnostics.test.ts tests/ti-drv8307evm-fabrication-dimensions.test.ts tests/upstream-integrity.test.ts tests/parity tests/visual.ts --write",
-    "format:check": "biome format lib site scripts tsup.config.ts tests/teardrop-geometry.test.ts tests/teardrop-visual.ts tests/dispose.test.ts tests/geometry.test.ts tests/text.test.ts tests/parity-comparison.test.ts tests/parity-prepare.test.ts tests/parity-regressions.test.ts tests/parity-removed-diagnostics.test.ts tests/ti-drv8307evm-fabrication-dimensions.test.ts tests/upstream-integrity.test.ts tests/parity tests/visual.ts",
+    "format": "biome format lib site scripts tsup.config.ts tests/teardrop-geometry.test.ts tests/teardrop-visual.ts tests/dispose.test.ts tests/geometry.test.ts tests/text.test.ts tests/parity-comparison.test.ts tests/parity-prepare.test.ts tests/parity-regressions.test.ts tests/parity-removed-diagnostics.test.ts tests/ti-drv8307evm-fabrication-dimensions.test.ts tests/upstream-integrity.test.ts tests/parity tests/visual.ts tests/soldermask.test.ts tests/soldermask-visual.ts tests/soldermask --write",
+    "format:check": "biome format lib site scripts tsup.config.ts tests/teardrop-geometry.test.ts tests/teardrop-visual.ts tests/dispose.test.ts tests/geometry.test.ts tests/text.test.ts tests/parity-comparison.test.ts tests/parity-prepare.test.ts tests/parity-regressions.test.ts tests/parity-removed-diagnostics.test.ts tests/ti-drv8307evm-fabrication-dimensions.test.ts tests/upstream-integrity.test.ts tests/parity tests/visual.ts tests/soldermask.test.ts tests/soldermask-visual.ts tests/soldermask",
     "test:reference": "bun tests/parity/prepare-upstream.ts && bun test --preload ./tests/upstream/circuit-to-canvas/tests/fixtures/preload.ts ./tests/upstream/circuit-to-canvas/tests",
     "test:parity": "bun tests/parity/audit.ts",
     "test:parity-layout": "bun tests/parity/check-layout.ts",
@@ -33,12 +33,14 @@
     "test:snapshots": "SNAPSHOT_TEST_ONLY=1 bun tests/parity/audit.ts",
     "snapshots:features:update": "UPDATE_SNAPSHOTS=1 SNAPSHOT_TEST_ONLY=1 bun tests/parity/audit.ts",
     "build:site": "vite build --target esnext --outDir site-dist",
-    "test:teardrops": "bun tests/teardrop-visual.ts"
+    "test:teardrops": "bun tests/teardrop-visual.ts",
+    "test:soldermask": "bun test tests/soldermask.test.ts && bun tests/soldermask-visual.ts"
   },
   "dependencies": {
     "@tscircuit/alphabet": "^0.0.25",
     "earcut": "^3.0.2",
-    "polygon-clipping": "^0.15.7"
+    "polygon-clipping": "^0.15.7",
+    "@tscircuit/circuit-json-util": "^0.0.120"
   },
   "peerDependencies": {
     "circuit-json": ">=0.0.518"
@@ -59,7 +61,6 @@
     "vite": "^6.3.5",
     "@napi-rs/canvas": "^0.1.84",
     "@resvg/resvg-js": "^2.6.2",
-    "@tscircuit/circuit-json-util": "^0.0.99",
     "@tscircuit/math-utils": "^0.0.36",
     "bun-match-svg": "^0.0.14",
     "circuit-json-to-connectivity-map": "^0.0.23",

@@ -7,105 +7,17 @@ import { drawKeepout } from "./draw-keepout"
 import { drawPcbDimension } from "./pcb-dimension/draw-pcb-dimension"
 import { drawText } from "./text/draw-text"
 import { DEFAULT_LAYER_COLORS, normalizeLayer, parseColor } from "./colors"
-import {
-  ellipse,
-  expandBrepRing,
-  MeshBuilder,
-  rectangle,
-  rotate,
-} from "./geometry"
+import { ellipse, MeshBuilder, rectangle } from "./geometry"
 import type { CircuitJson, CompiledScene, Diagnostic, Point } from "./types"
 
-type Element = Record<string, any>
-export function getElementId(element: Element, index = 0): string {
-  return element[`${element.type}_id`] ?? `${element.type}:${index}`
-}
+import { getElementShape as shape, type Element } from "./get-element-shape"
+import { compileSoldermask } from "./soldermask/compile-soldermask"
+import { prepareVias } from "./soldermask/prepare-vias"
 function center(e: Element): Point {
   return e.center ?? e.anchor_position ?? { x: e.x ?? 0, y: e.y ?? 0 }
 }
-function shape(e: Element, hole = false): Point[][] {
-  if (e.brep_shape)
-    return [e.brep_shape.outer_ring, ...(e.brep_shape.inner_rings ?? [])].map(
-      (r) => expandBrepRing(r.vertices),
-    )
-  if (e.outline?.length) return [e.outline]
-  if (e.shape === "rotated_pill_hole_with_rect_pad") {
-    // Pad and slot use independent rotations. Hole offsets are board-space
-    // coordinates, as in the reference canvas renderer, not pad-local offsets.
-    const base = center(e)
-    const c = hole
-      ? {
-          x: base.x + (e.hole_offset_x ?? 0),
-          y: base.y + (e.hole_offset_y ?? 0),
-        }
-      : base
-    const width = hole ? e.hole_width : e.rect_pad_width
-    const height = hole ? e.hole_height : e.rect_pad_height
-    return [
-      rectangle(
-        c,
-        width,
-        height,
-        hole ? Math.min(width, height) / 2 : (e.rect_border_radius ?? 0),
-        (hole ? e.hole_ccw_rotation : e.rect_ccw_rotation) ?? 0,
-      ),
-    ]
-  }
-  const kind = hole ? (e.hole_shape ?? e.shape) : e.shape
-  if (kind === "polygon") return [e.points ?? e.vertices ?? []]
-  const base = center(e),
-    rotation = e.rect_ccw_rotation ?? e.ccw_rotation ?? e.rotation ?? 0
-  const c = hole
-    ? rotate(
-        {
-          x: base.x + (e.hole_offset_x ?? 0),
-          y: base.y + (e.hole_offset_y ?? 0),
-        },
-        base,
-        rotation,
-      )
-    : base
-  if (
-    kind === "circle" ||
-    (kind === "circular_hole_with_rect_pad" && hole) ||
-    e.type === "pcb_via"
-  ) {
-    const diameter = hole
-      ? e.hole_diameter
-      : (e.outer_diameter ?? (e.radius != null ? e.radius * 2 : e.diameter))
-    return [
-      ellipse(c, diameter || e.diameter || e.hole_diameter || e.radius * 2),
-    ]
-  }
-  const width = hole
-    ? (e.hole_width ?? e.hole_diameter)
-    : (e.rect_pad_width ?? e.outer_width ?? e.width ?? e.hole_diameter)
-  const height = hole
-    ? (e.hole_height ?? e.hole_diameter)
-    : (e.rect_pad_height ?? e.outer_height ?? e.height ?? e.hole_diameter)
-  if (kind === "oval") return [ellipse(c, width, height, rotation)]
-  if (
-    [
-      "rect",
-      "square",
-      "rotated_rect",
-      "roundrect",
-      "rounded_rect",
-      "pill",
-      "rotated_pill",
-      "circular_hole_with_rect_pad",
-      "pill_hole_with_rect_pad",
-      undefined,
-    ].includes(kind)
-  ) {
-    const pill =
-      kind?.includes("pill") && !(kind === "pill_hole_with_rect_pad" && !hole)
-    const radius = pill
-      ? Math.min(width, height) / 2
-      : (e.corner_radius ?? e.rect_border_radius ?? 0)
-    return [rectangle(c, width, height, radius, rotation)]
-  }
-  throw new Error(`Unsupported shape: ${kind}`)
+export function getElementId(element: Element, index = 0): string {
+  return element[`${element.type}_id`] ?? `${element.type}:${index}`
 }
 /** Pure, DOM-free compiler. Exposes unsupported geometry rather than silently hiding it. */
 export function compileCircuitJson(
@@ -115,6 +27,7 @@ export function compileCircuitJson(
     layerColors?: Record<string, import("./types").Color>
   } = {},
 ): CompiledScene {
+  const { renderElements, boardOwnerMap } = prepareVias(elements)
   const builders = new Map<string, { paint: MeshBuilder; erase: MeshBuilder }>()
   const diagnostics: Diagnostic[] = [],
     elementIds = elements.map(getElementId)
@@ -134,8 +47,10 @@ export function compileCircuitJson(
     if (!builders.has(name))
       builders.set(name, { paint: new MeshBuilder(), erase: new MeshBuilder() })
     const mesh = builders.get(name)![erase ? "erase" : "paint"]
-    mesh.color = options.layerColors?.[name] ??
-      DEFAULT_LAYER_COLORS[name] ?? [0.75, 0.75, 0.75, 1]
+    mesh.color = erase
+      ? [0, 0, 0, 1]
+      : (options.layerColors?.[name] ??
+        DEFAULT_LAYER_COLORS[name] ?? [0.75, 0.75, 0.75, 1])
     mesh.element = index
     mesh.category = category
     return mesh
@@ -143,7 +58,7 @@ export function compileCircuitJson(
   const openings: { element: Element; index: number; layers: string[] }[] = []
   const keepouts: { rings: Point[][]; index: number; layers: string[] }[] = []
   const cutouts: { rings: Point[][]; index: number }[] = []
-  for (const [index, input] of elements.entries()) {
+  for (const { element: input, index } of renderElements) {
     const e = input as Element,
       type: string = e.type
     try {
@@ -151,17 +66,13 @@ export function compileCircuitJson(
         const rings = shape(e)
         get("board", index).polygon(rings)
         for (const ring of rings) get("edge_cuts", index).path(ring, 0.1, true)
-        for (const side of ["top", "bottom"])
-          get(`soldermask_${side}`, index).polygon(rings)
       } else if (type === "pcb_cutout") {
         cutouts.push({ rings: shape(e), index })
         get("edge_cuts", index).path(shape(e)[0], 0.05, true)
       } else if (input.type === "pcb_soldermask_opening") {
-        get(`soldermask_${input.layer}`, index, true).polygon(shape(input))
+        // Openings are applied by the soldermask pass after all overlays.
       } else if (type === "pcb_smtpad") {
         get(e.layer, index).polygon(shape(e))
-        if (!e.is_covered_with_solder_mask)
-          get(`soldermask_${e.layer}`, index, true).polygon(shape(e))
       } else if (type === "pcb_via" || type === "pcb_plated_hole") {
         let layers: string[] = e.layers ?? copper
         if (type === "pcb_via" && !e.layers && e.from_layer && e.to_layer) {
@@ -169,11 +80,9 @@ export function compileCircuitJson(
             to = copper.indexOf(e.to_layer)
           layers = copper.slice(Math.min(from, to), Math.max(from, to) + 1)
         }
-        for (const layer of layers) get(layer, index).polygon(shape(e))
+        for (const layer of layers)
+          get(layer, index, false, type === "pcb_via" ? 2 : 0).polygon(shape(e))
         openings.push({ element: e, index, layers })
-        for (const side of ["top", "bottom"])
-          if (layers.includes(side) && !e.is_covered_with_solder_mask)
-            get(`soldermask_${side}`, index, true).polygon(shape(e))
       } else if (type === "pcb_hole") {
         openings.push({
           element: { ...e, shape: e.hole_shape },
@@ -378,10 +287,16 @@ export function compileCircuitJson(
       get("board", index, true).polygon(rings)
       get("drill", index).polygon(rings)
     }
-    for (const side of ["top", "bottom"])
-      if (layers.includes(side))
-        get(`soldermask_${side}`, index, true).polygon(rings)
   }
+  compileSoldermask({
+    renderElements,
+    boardOwnerMap,
+    builders,
+    get,
+    options,
+    diagnostics,
+    elementIds,
+  })
   for (const { rings, index } of cutouts) {
     get("drill", index).polygon(rings)
     for (const name of builders.keys())

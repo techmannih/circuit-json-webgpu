@@ -22,7 +22,8 @@ type RenderOptions = {
     /** Copper-pour alpha multiplier (0–1, default 1). showCopperPours=false overrides it. */
     copperPourOpacity?: number;
     showCopperPours?: boolean;
-    /** Board substrate is hidden by default; outlines remain visible. */
+    /** Board material is hidden by default, except beneath visible soldermask.
+     * Explicit false also hides the substrate exposed by mask apertures. */
     showBoardMaterial?: boolean;
     showSolderMask?: boolean;
     showSilkscreen?: boolean;
@@ -125,6 +126,7 @@ declare class CircuitToWebGpuDrawer {
 }
 
 type Element = Record<string, any>;
+
 declare function getElementId(element: Element, index?: number): string;
 /** Pure, DOM-free compiler. Exposes unsupported geometry rather than silently hiding it. */
 declare function compileCircuitJson(elements: CircuitJson, options?: {

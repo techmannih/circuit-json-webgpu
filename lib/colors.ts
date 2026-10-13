@@ -22,6 +22,11 @@ export const DEFAULT_LAYER_COLORS: Record<string, Color> = {
   bottom_silkscreen: rgb(242, 237, 161),
   soldermask_top: rgb(12, 55, 33),
   soldermask_bottom: rgb(12, 55, 33),
+  soldermask_over_copper_top: rgb(52, 135, 73),
+  soldermask_over_copper_bottom: rgb(52, 135, 73),
+  soldermask_over_hole_top: rgb(26, 68, 37),
+  soldermask_over_hole_bottom: rgb(26, 68, 37),
+  substrate: rgb(201, 162, 110),
   top_fabrication: [1, 1, 1, 0.5],
   bottom_fabrication: [1, 1, 1, 0.5],
   top_notes: rgb(89, 148, 220),
@@ -30,9 +35,35 @@ export const DEFAULT_LAYER_COLORS: Record<string, Color> = {
   bottom_courtyard: rgb(38, 233, 255),
   edge_cuts: rgb(208, 210, 205),
 }
-export const normalizeLayer = (layer: string) => layer.replace(/_copper$/, "")
+export const normalizeLayer = (layer: string) =>
+  layer
+    .replace(/^(top|bottom)_soldermask$/, "soldermask_$1")
+    .replace(/_copper$/, "")
+
+// Basic CSS color keywords also appear in imported PCB annotation fixtures.
+const namedColors: Record<string, string> = {
+  black: "#000000",
+  silver: "#c0c0c0",
+  gray: "#808080",
+  grey: "#808080",
+  white: "#ffffff",
+  maroon: "#800000",
+  red: "#ff0000",
+  purple: "#800080",
+  fuchsia: "#ff00ff",
+  green: "#008000",
+  lime: "#00ff00",
+  olive: "#808000",
+  yellow: "#ffff00",
+  navy: "#000080",
+  blue: "#0000ff",
+  teal: "#008080",
+  aqua: "#00ffff",
+  transparent: "#00000000",
+}
 
 export function parseColor(value: string): Color {
+  value = namedColors[value.trim().toLowerCase()] ?? value.trim()
   const hex = value.match(/^#([0-9a-f]{3,8})$/i)?.[1]
   if (hex) {
     const full = hex.length <= 4 ? [...hex].map((c) => c + c).join("") : hex

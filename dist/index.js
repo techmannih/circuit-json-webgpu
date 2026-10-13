@@ -159,28 +159,28 @@ function capsule(a, b, width) {
   }
   return points;
 }
-function rotate(p, center2, degrees = 0) {
-  const t = degrees * Math.PI / 180, x = p.x - center2.x, y = p.y - center2.y;
+function rotate(p, center3, degrees = 0) {
+  const t = degrees * Math.PI / 180, x = p.x - center3.x, y = p.y - center3.y;
   return {
-    x: center2.x + x * Math.cos(t) - y * Math.sin(t),
-    y: center2.y + x * Math.sin(t) + y * Math.cos(t)
+    x: center3.x + x * Math.cos(t) - y * Math.sin(t),
+    y: center3.y + x * Math.sin(t) + y * Math.cos(t)
   };
 }
-function ellipse(center2, width, height = width, rotation = 0) {
+function ellipse(center3, width, height = width, rotation = 0) {
   if (!(width > 0 && height > 0)) return [];
   return Array.from({ length: 96 }, (_, i) => {
     const t = i * 2 * Math.PI / 96;
     return rotate(
       {
-        x: center2.x + Math.cos(t) * width / 2,
-        y: center2.y + Math.sin(t) * height / 2
+        x: center3.x + Math.cos(t) * width / 2,
+        y: center3.y + Math.sin(t) * height / 2
       },
-      center2,
+      center3,
       rotation
     );
   });
 }
-function rectangle(center2, width, height, radius = 0, rotation = 0) {
+function rectangle(center3, width, height, radius = 0, rotation = 0) {
   if (!(width > 0 && height > 0)) return [];
   radius = Math.max(0, Math.min(radius, width / 2, height / 2));
   const points = [];
@@ -193,10 +193,10 @@ function rectangle(center2, width, height, radius = 0, rotation = 0) {
       points.push(
         rotate(
           {
-            x: center2.x + sx * (width / 2 - radius) + radius * Math.cos(t),
-            y: center2.y + sy * (height / 2 - radius) + radius * Math.sin(t)
+            x: center3.x + sx * (width / 2 - radius) + radius * Math.cos(t),
+            y: center3.y + sy * (height / 2 - radius) + radius * Math.sin(t)
           },
-          center2,
+          center3,
           rotation
         )
       );
@@ -212,16 +212,16 @@ function expandBrepRing(vertices) {
     const bulge = a.bulge ?? 0, dx = b.x - a.x, dy = b.y - a.y;
     if (!bulge || !dx && !dy) continue;
     const sweep = 4 * Math.atan(bulge);
-    const center2 = {
+    const center3 = {
       x: (a.x + b.x) / 2 - dy * (1 - bulge * bulge) / (4 * bulge),
       y: (a.y + b.y) / 2 + dx * (1 - bulge * bulge) / (4 * bulge)
     };
-    const angle = Math.atan2(a.y - center2.y, a.x - center2.x), r = Math.hypot(a.x - center2.x, a.y - center2.y);
+    const angle = Math.atan2(a.y - center3.y, a.x - center3.x), r = Math.hypot(a.x - center3.x, a.y - center3.y);
     const steps = Math.max(2, Math.ceil(Math.abs(sweep) / (Math.PI / 48)));
     for (let j = 1; j < steps; j++)
       points.push({
-        x: center2.x + r * Math.cos(angle + sweep * j / steps),
-        y: center2.y + r * Math.sin(angle + sweep * j / steps)
+        x: center3.x + r * Math.cos(angle + sweep * j / steps),
+        y: center3.y + r * Math.sin(angle + sweep * j / steps)
       });
   }
   return points;
@@ -302,6 +302,11 @@ var DEFAULT_LAYER_COLORS = {
   bottom_silkscreen: rgb(242, 237, 161),
   soldermask_top: rgb(12, 55, 33),
   soldermask_bottom: rgb(12, 55, 33),
+  soldermask_over_copper_top: rgb(52, 135, 73),
+  soldermask_over_copper_bottom: rgb(52, 135, 73),
+  soldermask_over_hole_top: rgb(26, 68, 37),
+  soldermask_over_hole_bottom: rgb(26, 68, 37),
+  substrate: rgb(201, 162, 110),
   top_fabrication: [1, 1, 1, 0.5],
   bottom_fabrication: [1, 1, 1, 0.5],
   top_notes: rgb(89, 148, 220),
@@ -310,8 +315,29 @@ var DEFAULT_LAYER_COLORS = {
   bottom_courtyard: rgb(38, 233, 255),
   edge_cuts: rgb(208, 210, 205)
 };
-var normalizeLayer = (layer) => layer.replace(/_copper$/, "");
+var normalizeLayer = (layer) => layer.replace(/^(top|bottom)_soldermask$/, "soldermask_$1").replace(/_copper$/, "");
+var namedColors = {
+  black: "#000000",
+  silver: "#c0c0c0",
+  gray: "#808080",
+  grey: "#808080",
+  white: "#ffffff",
+  maroon: "#800000",
+  red: "#ff0000",
+  purple: "#800080",
+  fuchsia: "#ff00ff",
+  green: "#008000",
+  lime: "#00ff00",
+  olive: "#808000",
+  yellow: "#ffff00",
+  navy: "#000080",
+  blue: "#0000ff",
+  teal: "#008080",
+  aqua: "#00ffff",
+  transparent: "#00000000"
+};
 function parseColor(value) {
+  value = namedColors[value.trim().toLowerCase()] ?? value.trim();
   const hex = value.match(/^#([0-9a-f]{3,8})$/i)?.[1];
   if (hex) {
     const full = hex.length <= 4 ? [...hex].map((c) => c + c).join("") : hex;
@@ -916,14 +942,15 @@ function drawPcbDimension({
   );
 }
 
-// lib/compile-circuit.ts
-function getElementId(element, index = 0) {
-  return element[`${element.type}_id`] ?? `${element.type}:${index}`;
-}
+// lib/get-element-shape.ts
 function center(e) {
   return e.center ?? e.anchor_position ?? { x: e.x ?? 0, y: e.y ?? 0 };
 }
-function shape(e, hole = false) {
+function getElementShape(e, hole = false) {
+  if (e.shape === "hole_with_polygon_pad" && !hole)
+    return [
+      (e.pad_outline ?? []).map((p) => ({ x: p.x + e.x, y: p.y + e.y }))
+    ];
   if (e.brep_shape)
     return [e.brep_shape.outer_ring, ...e.brep_shape.inner_rings ?? []].map(
       (r) => expandBrepRing(r.vertices)
@@ -985,7 +1012,250 @@ function shape(e, hole = false) {
   }
   throw new Error(`Unsupported shape: ${kind}`);
 }
+
+// lib/soldermask/get-soldermask-opening.ts
+function getSoldermaskOpening(e) {
+  const margin = e.soldermask_margin ?? 0;
+  const isHole = e.type === "pcb_hole";
+  const kind = isHole ? e.hole_shape : e.shape;
+  const center3 = e.center ?? { x: e.x ?? 0, y: e.y ?? 0 };
+  const rotation = e.rect_ccw_rotation ?? e.ccw_rotation ?? e.rotation ?? 0;
+  if (kind === "polygon" || kind === "hole_with_polygon_pad") {
+    const points = getElementShape(e)[0];
+    if (!margin || points.length < 3) return [points];
+    const c = {
+      x: points.reduce((n, p) => n + p.x, 0) / points.length,
+      y: points.reduce((n, p) => n + p.y, 0) / points.length
+    };
+    if (points.some((p) => Math.hypot(p.x - c.x, p.y - c.y) + margin <= 0))
+      return [];
+    return [
+      points.map((p) => {
+        const d = Math.hypot(p.x - c.x, p.y - c.y);
+        return d ? {
+          x: p.x + (p.x - c.x) * margin / d,
+          y: p.y + (p.y - c.y) * margin / d
+        } : { x: p.x + margin, y: p.y };
+      })
+    ];
+  }
+  if (kind === "circle" || e.type === "pcb_via") {
+    const diameter = isHole ? e.hole_diameter : e.outer_diameter ?? e.radius * 2;
+    return [ellipse(center3, diameter + 2 * margin)];
+  }
+  let width = isHole ? e.hole_width ?? e.hole_diameter : e.rect_pad_width ?? e.outer_width ?? e.width;
+  let height = isHole ? e.hole_height ?? e.hole_diameter : e.rect_pad_height ?? e.outer_height ?? e.height;
+  let left = margin, right = margin, top = margin, bottom = margin;
+  if (e.type === "pcb_smtpad" && (kind === "rect" || kind === "rotated_rect")) {
+    left = e.soldermask_margin_left ?? margin;
+    right = e.soldermask_margin_right ?? margin;
+    top = e.soldermask_margin_top ?? margin;
+    bottom = e.soldermask_margin_bottom ?? margin;
+  }
+  width += left + right;
+  height += top + bottom;
+  const shifted = rotate(
+    { x: center3.x + (right - left) / 2, y: center3.y + (top - bottom) / 2 },
+    center3,
+    rotation
+  );
+  if (kind === "oval") return [ellipse(shifted, width, height, rotation)];
+  const isPill = kind === "pill" || kind === "rotated_pill";
+  const radius = isPill ? Math.min(width, height) / 2 : Math.max(
+    0,
+    (e.corner_radius ?? e.rect_border_radius ?? 0) + Math.min(0, left, right, top, bottom)
+  );
+  return [rectangle(shifted, width, height, radius, rotation)];
+}
+
+// lib/soldermask/prepare-vias.ts
+import { createBoardOwnerMap } from "@tscircuit/circuit-json-util";
+function prepareVias(elements) {
+  const boardOwnerMap = createBoardOwnerMap([...elements]);
+  const renderElements = elements.map((element, index) => ({
+    element,
+    index
+  }));
+  const atPosition = /* @__PURE__ */ new Map();
+  const key = (board, x, y) => `${board?.pcb_board_id ?? ""}:${x}:${y}`;
+  for (const element of elements) {
+    if (element.type !== "pcb_via") continue;
+    const position = key(
+      boardOwnerMap.get(element.pcb_via_id),
+      element.x,
+      element.y
+    );
+    const vias = atPosition.get(position) ?? [];
+    vias.push(element);
+    atPosition.set(position, vias);
+  }
+  for (const [index, trace] of elements.entries()) {
+    if (trace.type !== "pcb_trace") continue;
+    const board = boardOwnerMap.get(trace.pcb_trace_id);
+    for (const [routeIndex, point] of trace.route.entries()) {
+      if (point.route_type !== "via") continue;
+      const position = key(board, point.x, point.y);
+      const vias = atPosition.get(position) ?? [];
+      if (vias.some(
+        (via2) => via2.layers.includes(point.from_layer) && via2.layers.includes(point.to_layer)
+      ))
+        continue;
+      const via = {
+        type: "pcb_via",
+        pcb_via_id: `${trace.pcb_trace_id}_route_via_${routeIndex}`,
+        pcb_trace_id: trace.pcb_trace_id,
+        subcircuit_id: trace.subcircuit_id,
+        pcb_group_id: trace.pcb_group_id,
+        x: point.x,
+        y: point.y,
+        layers: [point.from_layer, point.to_layer],
+        hole_diameter: point.hole_diameter ?? board?.min_via_hole_diameter ?? 0.25,
+        outer_diameter: point.outer_diameter ?? board?.min_via_pad_diameter ?? 0.6,
+        tented_on_top: point.tented_on_top,
+        tented_on_bottom: point.tented_on_bottom
+      };
+      renderElements.push({ element: via, index });
+      boardOwnerMap.set(via.pcb_via_id, board);
+      vias.push(via);
+      atPosition.set(position, vias);
+    }
+  }
+  return { renderElements, boardOwnerMap };
+}
+function isViaTented(via, side, owners) {
+  const board = owners.has(via.pcb_via_id) ? owners.get(via.pcb_via_id) : owners.get(via.pcb_trace_id ?? "");
+  return (side === "top" ? via.tented_on_top : via.tented_on_bottom) ?? via.is_tented ?? (side === "top" ? board?.default_via_tented_on_top : board?.default_via_tented_on_bottom) ?? false;
+}
+
+// lib/soldermask/compile-soldermask.ts
+function compileSoldermask({
+  renderElements,
+  boardOwnerMap,
+  builders,
+  get,
+  options,
+  diagnostics,
+  elementIds
+}) {
+  const surfaces = renderElements.filter(
+    ({ element }) => element.type === "pcb_board" || element.type === "pcb_panel"
+  );
+  const color = (name) => options.layerColors?.[name] ?? DEFAULT_LAYER_COLORS[name];
+  const paint = (side, index, material) => {
+    const mesh = get(`soldermask_${side}`, index);
+    mesh.color = color(`soldermask_over_${material}_${side}`);
+    return mesh;
+  };
+  const attempt = ({ element, index }, draw) => {
+    try {
+      draw();
+    } catch (error) {
+      if (!diagnostics.some((d) => d.elementId === elementIds[index]))
+        diagnostics.push({
+          elementId: elementIds[index],
+          type: element.type,
+          message: String(error)
+        });
+    }
+  };
+  for (const item of surfaces)
+    attempt(item, () => {
+      get("substrate", item.index).polygon(getElementShape(item.element));
+      for (const side of ["top", "bottom"])
+        get(`soldermask_${side}`, item.index).polygon(getElementShape(item.element));
+    });
+  if (surfaces.length)
+    for (const side of ["top", "bottom"]) {
+      const source = builders.get(side)?.paint;
+      if (!source) continue;
+      const traceIndices = new Set(
+        renderElements.filter((i) => i.element.type === "pcb_trace").map((i) => i.index)
+      );
+      const target = paint(side, 0, "copper");
+      const map = /* @__PURE__ */ new Map();
+      for (let offset = 0; offset < source.vertices.length; offset += 8) {
+        const index = source.vertices[offset + 6];
+        if (!traceIndices.has(index) || source.vertices[offset + 7] === 2)
+          continue;
+        map.set(offset / 8, target.vertices.length / 8);
+        target.vertices.push(
+          source.vertices[offset],
+          source.vertices[offset + 1],
+          ...color(`soldermask_over_copper_${side}`),
+          index,
+          0
+        );
+      }
+      for (let i = 0; i < source.indices.length; i += 3) {
+        const a = map.get(source.indices[i]), b = map.get(source.indices[i + 1]), c = map.get(source.indices[i + 2]);
+        if (a !== void 0 && b !== void 0 && c !== void 0)
+          target.indices.push(a, b, c);
+      }
+    }
+  const orderedElements = [
+    ...renderElements.filter((i) => i.element.type !== "pcb_via"),
+    ...renderElements.filter((i) => i.element.type === "pcb_via")
+  ];
+  for (const item of orderedElements)
+    attempt(item, () => {
+      const { element: e, index } = item;
+      if (e.type === "pcb_soldermask_opening") {
+        get(`soldermask_${e.layer}`, index, true).polygon(getElementShape(e));
+        return;
+      }
+      if (e.type === "pcb_copper_pour") {
+        if (!surfaces.length || e.layer !== "top" && e.layer !== "bottom")
+          return;
+        if (e.covered_with_solder_mask !== false)
+          paint(e.layer, index, "copper").polygon(getElementShape(e));
+        else get(`soldermask_${e.layer}`, index, true).polygon(getElementShape(e));
+        return;
+      }
+      if (!["pcb_smtpad", "pcb_plated_hole", "pcb_hole", "pcb_via"].includes(
+        e.type
+      ))
+        return;
+      const pad = e;
+      if (surfaces.length && (e.type === "pcb_hole" || (e.type === "pcb_via" || e.type === "pcb_plated_hole") && (!e.layers || e.layers.includes("top") && e.layers.includes("bottom"))))
+        get("substrate", index, true).polygon(
+          getElementShape(
+            e.type === "pcb_hole" ? { ...e, shape: e.hole_shape } : e,
+            true
+          )
+        );
+      for (const side of ["top", "bottom"]) {
+        if (e.type === "pcb_smtpad" && e.layer !== side) continue;
+        if ((e.type === "pcb_plated_hole" || e.type === "pcb_via") && e.layers && !e.layers.includes(side))
+          continue;
+        if (e.type === "pcb_via") {
+          if (isViaTented(e, side, boardOwnerMap)) {
+            const outer = getElementShape(e), drill = getElementShape(e, true);
+            paint(side, index, "copper").polygon([...outer, ...drill]);
+            paint(side, index, "hole").polygon(drill);
+          } else get(`soldermask_${side}`, index, true).polygon(getElementShape(e));
+          continue;
+        }
+        if (surfaces.length)
+          paint(side, index, "copper").polygon(
+            e.type === "pcb_hole" ? getElementShape({ ...e, shape: e.hole_shape }, true) : getElementShape(e)
+          );
+        if (!pad.is_covered_with_solder_mask)
+          get(`soldermask_${side}`, index, true).polygon(
+            getSoldermaskOpening(pad)
+          );
+      }
+    });
+}
+
+// lib/compile-circuit.ts
+function center2(e) {
+  return e.center ?? e.anchor_position ?? { x: e.x ?? 0, y: e.y ?? 0 };
+}
+function getElementId(element, index = 0) {
+  return element[`${element.type}_id`] ?? `${element.type}:${index}`;
+}
 function compileCircuitJson(elements, options = {}) {
+  const { renderElements, boardOwnerMap } = prepareVias(elements);
   const builders = /* @__PURE__ */ new Map();
   const diagnostics = [], elementIds = elements.map(getElementId);
   const board = elements.find((e) => e.type === "pcb_board");
@@ -1002,7 +1272,7 @@ function compileCircuitJson(elements, options = {}) {
     if (!builders.has(name))
       builders.set(name, { paint: new MeshBuilder(), erase: new MeshBuilder() });
     const mesh = builders.get(name)[erase ? "erase" : "paint"];
-    mesh.color = options.layerColors?.[name] ?? DEFAULT_LAYER_COLORS[name] ?? [0.75, 0.75, 0.75, 1];
+    mesh.color = erase ? [0, 0, 0, 1] : options.layerColors?.[name] ?? DEFAULT_LAYER_COLORS[name] ?? [0.75, 0.75, 0.75, 1];
     mesh.element = index;
     mesh.category = category;
     return mesh;
@@ -1010,35 +1280,28 @@ function compileCircuitJson(elements, options = {}) {
   const openings = [];
   const keepouts = [];
   const cutouts = [];
-  for (const [index, input] of elements.entries()) {
+  for (const { element: input, index } of renderElements) {
     const e = input, type = e.type;
     try {
       if (type === "pcb_board" || type === "pcb_panel") {
-        const rings = shape(e);
+        const rings = getElementShape(e);
         get("board", index).polygon(rings);
         for (const ring of rings) get("edge_cuts", index).path(ring, 0.1, true);
-        for (const side of ["top", "bottom"])
-          get(`soldermask_${side}`, index).polygon(rings);
       } else if (type === "pcb_cutout") {
-        cutouts.push({ rings: shape(e), index });
-        get("edge_cuts", index).path(shape(e)[0], 0.05, true);
+        cutouts.push({ rings: getElementShape(e), index });
+        get("edge_cuts", index).path(getElementShape(e)[0], 0.05, true);
       } else if (input.type === "pcb_soldermask_opening") {
-        get(`soldermask_${input.layer}`, index, true).polygon(shape(input));
       } else if (type === "pcb_smtpad") {
-        get(e.layer, index).polygon(shape(e));
-        if (!e.is_covered_with_solder_mask)
-          get(`soldermask_${e.layer}`, index, true).polygon(shape(e));
+        get(e.layer, index).polygon(getElementShape(e));
       } else if (type === "pcb_via" || type === "pcb_plated_hole") {
         let layers2 = e.layers ?? copper;
         if (type === "pcb_via" && !e.layers && e.from_layer && e.to_layer) {
           const from = copper.indexOf(e.from_layer), to = copper.indexOf(e.to_layer);
           layers2 = copper.slice(Math.min(from, to), Math.max(from, to) + 1);
         }
-        for (const layer of layers2) get(layer, index).polygon(shape(e));
+        for (const layer of layers2)
+          get(layer, index, false, type === "pcb_via" ? 2 : 0).polygon(getElementShape(e));
         openings.push({ element: e, index, layers: layers2 });
-        for (const side of ["top", "bottom"])
-          if (layers2.includes(side) && !e.is_covered_with_solder_mask)
-            get(`soldermask_${side}`, index, true).polygon(shape(e));
       } else if (type === "pcb_hole") {
         openings.push({
           element: { ...e, shape: e.hole_shape },
@@ -1089,7 +1352,7 @@ function compileCircuitJson(elements, options = {}) {
             get(b.layer, index).line(a, b, b.width);
         }
       } else if (type === "pcb_copper_pour") {
-        get(e.layer, index, false, 1).polygon(shape(e));
+        get(e.layer, index, false, 1).polygon(getElementShape(e));
       } else if (type === "pcb_copper_text") {
         drawText(get(e.layer, index), e, options.textYAxis);
       } else if (/^pcb_(silkscreen|fabrication_note|courtyard|note|user_note)_/.test(
@@ -1143,10 +1406,10 @@ function compileCircuitJson(elements, options = {}) {
             );
           }
         } else if (type === "pcb_silkscreen_graphic" && e.shape === "brep") {
-          mesh.polygon(shape(e));
+          mesh.polygon(getElementShape(e));
         } else if (type.endsWith("_rect")) {
           const points = rectangle(
-            center(e),
+            center2(e),
             e.width,
             e.height,
             e.corner_radius ?? 0,
@@ -1155,13 +1418,13 @@ function compileCircuitJson(elements, options = {}) {
           if (e.is_filled) mesh.polygon([points]);
           else mesh.path(points, e.stroke_width ?? 0.05, true);
         } else if (type.endsWith("_circle")) {
-          const points = ellipse(center(e), (e.radius ?? 0) * 2);
+          const points = ellipse(center2(e), (e.radius ?? 0) * 2);
           if (e.is_filled) mesh.polygon([points]);
           else mesh.path(points, e.stroke_width ?? 0.05, true);
         } else throw new Error("Unsupported annotation geometry");
       } else if (type === "pcb_keepout") {
         keepouts.push({
-          rings: shape(e),
+          rings: getElementShape(e),
           index,
           layers: e.layers ?? [e.layer ?? "top"]
         });
@@ -1198,17 +1461,23 @@ function compileCircuitJson(elements, options = {}) {
     }
   }
   for (const { element, index, layers: layers2 } of openings) {
-    const rings = shape(element, true);
+    const rings = getElementShape(element, true);
     for (const layer of layers2) get(layer, index, true).polygon(rings);
     const isThrough = layers2.includes("top") && layers2.includes("bottom");
     if (isThrough) {
       get("board", index, true).polygon(rings);
       get("drill", index).polygon(rings);
     }
-    for (const side of ["top", "bottom"])
-      if (layers2.includes(side))
-        get(`soldermask_${side}`, index, true).polygon(rings);
   }
+  compileSoldermask({
+    renderElements,
+    boardOwnerMap,
+    builders,
+    get,
+    options,
+    diagnostics,
+    elementIds
+  });
   for (const { rings, index } of cutouts) {
     get("drill", index).polygon(rings);
     for (const name of builders.keys())
@@ -1608,10 +1877,13 @@ var CircuitToWebGpuDrawer = class _CircuitToWebGpuDrawer {
       this.highlightKey = key;
     }
     const selected = normalizeLayer(o.selectedLayer ?? "top"), filter = o.layers ? new Set(o.layers.map(normalizeLayer)) : void 0;
+    const maskVisible = !!o.showSolderMask && !xRayActive && (selected === "top" || selected === "bottom") && (!filter || filter.has(`soldermask_${selected}`));
     const visible = this.layers.filter((l) => {
       if (filter && !filter.has(l.name)) return false;
       if (xRayActive && !this.isCopper(l.name)) return false;
       if (l.name === "board" && !o.showBoardMaterial) return false;
+      if (l.name === "substrate" && (!maskVisible || o.showBoardMaterial === false))
+        return false;
       if (l.name.startsWith("soldermask_") && (!o.showSolderMask || l.name !== `soldermask_${selected}`))
         return false;
       if (l.name.includes("silkscreen") && o.showSilkscreen === false)
@@ -1622,7 +1894,7 @@ var CircuitToWebGpuDrawer = class _CircuitToWebGpuDrawer {
       if (l.name.includes("courtyard") && !o.showCourtyards) return false;
       return xRayActive && this.isCopper(l.name) || this.opacity(l.name, selected, o.hiddenLayerOpacity ?? 0.4) > 0;
     }).sort(
-      (a, b) => this.order(a.name, selected) - this.order(b.name, selected)
+      (a, b) => this.order(a.name, selected, maskVisible) - this.order(b.name, selected, maskVisible)
     );
     const selectedLayers = xRayActive ? this.xRayLayers.filter((layer) => !filter || filter.has(layer.name)).sort(
       (a, b) => this.xRayOrder(a.name, selected) - this.xRayOrder(b.name, selected)
@@ -1699,7 +1971,7 @@ var CircuitToWebGpuDrawer = class _CircuitToWebGpuDrawer {
     return /^(top|bottom|inner\d+)$/.test(layer);
   }
   opacity(layer, selected, hidden) {
-    return ["board", "drill", "edge_cuts"].includes(layer) || layer === selected || layer.startsWith(`${selected}_`) || layer.endsWith(`_${selected}`) ? 1 : Math.max(0, Math.min(1, hidden));
+    return ["board", "substrate", "drill", "edge_cuts"].includes(layer) || layer === selected || layer.startsWith(`${selected}_`) || layer.endsWith(`_${selected}`) ? 1 : Math.max(0, Math.min(1, hidden));
   }
   xRayOrder(layer, selected) {
     if (layer === "drill") return 200;
@@ -1708,9 +1980,10 @@ var CircuitToWebGpuDrawer = class _CircuitToWebGpuDrawer {
     if (layer.startsWith("inner")) return 20 - Number(layer.slice(5));
     return 40;
   }
-  order(layer, selected) {
+  order(layer, selected, maskVisible = false) {
     if (layer === "board") return -100;
-    if (layer === "drill") return 200;
+    if (layer === "substrate") return -90;
+    if (layer === "drill") return maskVisible ? 105 : 200;
     if (layer === "edge_cuts") return 150;
     const base = layer === selected ? 100 : layer.startsWith("inner") ? 20 - Number(layer.slice(5)) : layer === "bottom" ? 30 : 40;
     if (layer.includes("soldermask")) return 110;

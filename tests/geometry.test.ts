@@ -140,7 +140,8 @@ test("rectangular soldermask openings erase only the selected mask layer", () =>
   ])
   expect(scene.diagnostics).toEqual([])
   const mask = scene.layers.find((layer) => layer.name === "soldermask_top")!
-  expect(area(mask.paint)).toBeCloseTo(100)
+  // Board surface plus the covered copper pour's lighter mask overlay.
+  expect(area(mask.paint)).toBeCloseTo(164)
   expect(area(mask.erase)).toBeCloseTo(8)
   expect(
     scene.layers
@@ -405,9 +406,10 @@ test("wire-to-via segments stay on the adjacent layer without bridging other run
       ],
     },
   ] as any)
-  expect(scene.layers.map((l) => l.name).sort()).toEqual(["bottom", "top"])
+  expect(scene.layers.some((l) => l.name === "inner1")).toBe(false)
+  expect(scene.layers.some((l) => l.name === "drill")).toBe(true)
   expect(area(scene.layers.find((l) => l.name === "top")!.paint)).toBeCloseTo(
-    5 + Math.PI / 4,
+    5 + Math.PI / 4 + Math.PI * 0.3 ** 2,
     1,
   )
 })

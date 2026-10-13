@@ -18,7 +18,8 @@ export type RenderOptions = {
   /** Copper-pour alpha multiplier (0–1, default 1). showCopperPours=false overrides it. */
   copperPourOpacity?: number
   showCopperPours?: boolean
-  /** Board substrate is hidden by default; outlines remain visible. */
+  /** Board material is hidden by default, except beneath visible soldermask.
+   * Explicit false also hides the substrate exposed by mask apertures. */
   showBoardMaterial?: boolean
   showSolderMask?: boolean
   showSilkscreen?: boolean

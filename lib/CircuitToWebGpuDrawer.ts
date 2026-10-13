@@ -364,11 +364,21 @@ export class CircuitToWebGpuDrawer {
     }
     const selected = normalizeLayer(o.selectedLayer ?? "top"),
       filter = o.layers ? new Set(o.layers.map(normalizeLayer)) : undefined
+    const maskVisible =
+      !!o.showSolderMask &&
+      !xRayActive &&
+      (selected === "top" || selected === "bottom") &&
+      (!filter || filter.has(`soldermask_${selected}`))
     const visible = this.layers
       .filter((l) => {
         if (filter && !filter.has(l.name)) return false
         if (xRayActive && !this.isCopper(l.name)) return false
         if (l.name === "board" && !o.showBoardMaterial) return false
+        if (
+          l.name === "substrate" &&
+          (!maskVisible || o.showBoardMaterial === false)
+        )
+          return false
         if (
           l.name.startsWith("soldermask_") &&
           (!o.showSolderMask || l.name !== `soldermask_${selected}`)
@@ -386,7 +396,9 @@ export class CircuitToWebGpuDrawer {
         )
       })
       .sort(
-        (a, b) => this.order(a.name, selected) - this.order(b.name, selected),
+        (a, b) =>
+          this.order(a.name, selected, maskVisible) -
+          this.order(b.name, selected, maskVisible),
       )
     const selectedLayers = xRayActive
       ? this.xRayLayers
@@ -478,7 +490,7 @@ export class CircuitToWebGpuDrawer {
     return /^(top|bottom|inner\d+)$/.test(layer)
   }
   private opacity(layer: string, selected: string, hidden: number) {
-    return ["board", "drill", "edge_cuts"].includes(layer) ||
+    return ["board", "substrate", "drill", "edge_cuts"].includes(layer) ||
       layer === selected ||
       layer.startsWith(`${selected}_`) ||
       layer.endsWith(`_${selected}`)
@@ -492,9 +504,10 @@ export class CircuitToWebGpuDrawer {
     if (layer.startsWith("inner")) return 20 - Number(layer.slice(5))
     return 40
   }
-  private order(layer: string, selected: string) {
+  private order(layer: string, selected: string, maskVisible = false) {
     if (layer === "board") return -100
-    if (layer === "drill") return 200
+    if (layer === "substrate") return -90
+    if (layer === "drill") return maskVisible ? 105 : 200
     if (layer === "edge_cuts") return 150
     const base =
       layer === selected
